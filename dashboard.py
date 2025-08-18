@@ -50,14 +50,15 @@ def load_data(symbol, data_type):
 @st.cache_data
 def create_ohlc_chart(df, rolling_window=None):
     """
-    Creates an OHLC chart using Altair from the database data.
+    Creates an OHLC chart with Bollinger-style bands and a volume chart.
     """
+    # Define the base chart with common encodings
     base = alt.Chart(df).encode(
-        alt.X('date:T', axis=alt.Axis(title='Date')),
-        color=alt.condition("datum.open < datum.close", alt.value("#06982d"), alt.value("#ae1325"))
+        alt.X('date:T', axis=alt.Axis(title=None, labels=False))
     )
 
-    chart = alt.layer(
+    # OHLC chart layer
+    ohlc = alt.layer(
         base.mark_rule().encode(
             alt.Y('low:Q', title='Price', scale=alt.Scale(zero=False)),
             alt.Y2('high:Q')
@@ -66,74 +67,59 @@ def create_ohlc_chart(df, rolling_window=None):
             alt.Y('open:Q'),
             alt.Y2('close:Q')
         )
-    ).interactive()
+    ).encode(
+        color=alt.condition("datum.open < datum.close", alt.value("#06982d"), alt.value("#ae1325"))
+    )
+
+    price_chart = ohlc
 
     if rolling_window:
         overlay_df = df.dropna(subset=['rolling_mean', 'upper_bound', 'lower_bound',
                                      'upper_bound_2sigma', 'lower_bound_2sigma',
                                      'upper_bound_3sigma', 'lower_bound_3sigma'])
 
-        rolling_avg_line = alt.Chart(overlay_df).mark_line(
-            color='white',
-            strokeWidth=2
-        ).encode(
-            x='date:T',
-            y='rolling_mean:Q'
+        # --- Define Area Bands (Fill only) ---
+        ub3_area = alt.Chart(overlay_df).mark_area(opacity=0.2, color='#FF4500').encode(y='upper_bound_3sigma:Q', y2='upper_bound_2sigma:Q', x='date:T')
+        ub2_area = alt.Chart(overlay_df).mark_area(opacity=0.15, color='#FF7F50').encode(y='upper_bound_2sigma:Q', y2='upper_bound:Q', x='date:T')
+        ub1_area = alt.Chart(overlay_df).mark_area(opacity=0.1, color='#FFBF00').encode(y='upper_bound:Q', y2='rolling_mean:Q', x='date:T')
+
+        lb1_area = alt.Chart(overlay_df).mark_area(opacity=0.1, color='#AFEEEE').encode(y='rolling_mean:Q', y2='lower_bound:Q', x='date:T')
+        lb2_area = alt.Chart(overlay_df).mark_area(opacity=0.15, color='#40E0D0').encode(y='lower_bound:Q', y2='lower_bound_2sigma:Q', x='date:T')
+        lb3_area = alt.Chart(overlay_df).mark_area(opacity=0.2, color='#008B8B').encode(y='lower_bound_2sigma:Q', y2='lower_bound_3sigma:Q', x='date:T')
+
+        # --- Define Bound Lines ---
+        line_opacity = 0.5
+        ub3_line = alt.Chart(overlay_df).mark_line(color='#FF4500', opacity=line_opacity).encode(x='date:T', y='upper_bound_3sigma:Q')
+        ub2_line = alt.Chart(overlay_df).mark_line(color='#FF7F50', opacity=line_opacity).encode(x='date:T', y='upper_bound_2sigma:Q')
+        ub1_line = alt.Chart(overlay_df).mark_line(color='#FFBF00', opacity=line_opacity).encode(x='date:T', y='upper_bound:Q')
+        lb1_line = alt.Chart(overlay_df).mark_line(color='#AFEEEE', opacity=line_opacity).encode(x='date:T', y='lower_bound:Q')
+        lb2_line = alt.Chart(overlay_df).mark_line(color='#40E0D0', opacity=line_opacity).encode(x='date:T', y='lower_bound_2sigma:Q')
+        lb3_line = alt.Chart(overlay_df).mark_line(color='#008B8B', opacity=line_opacity).encode(x='date:T', y='lower_bound_3sigma:Q')
+
+        # Rolling average line
+        rolling_avg_line = alt.Chart(overlay_df).mark_line(color='white', strokeWidth=2, opacity=0.5).encode(x='date:T', y='rolling_mean:Q')
+
+        price_chart = alt.layer(
+            ub3_area, ub2_area, ub1_area, lb1_area, lb2_area, lb3_area,
+            ub3_line, ub2_line, ub1_line, lb1_line, lb2_line, lb3_line,
+            ohlc, 
+            rolling_avg_line
         )
 
-        upper_bound_line = alt.Chart(overlay_df).mark_line(
-            color='#ffb366', # 1-sigma upper bound
-            opacity=0.3
-        ).encode(
-            x='date:T',
-            y='upper_bound:Q'
-        )
+    # Volume Chart
+    volume_chart = alt.Chart(df).mark_bar().encode(
+        x=alt.X('date:T', axis=alt.Axis(title='Date')),
+        y=alt.Y('volume:Q', axis=alt.Axis(title='Volume')),
+        color=alt.condition("datum.open < datum.close", alt.value("#06982d"), alt.value("#ae1325"))
+    ).properties(height=100)
 
-        lower_bound_line = alt.Chart(overlay_df).mark_line(
-            color='#99ff99', # 1-sigma lower bound
-            opacity=0.3
-        ).encode(
-            x='date:T',
-            y='lower_bound:Q'
-        )
+    # Combine charts vertically
+    final_chart = alt.vconcat(
+        price_chart.properties(height=450).interactive(),
+        volume_chart
+    ).resolve_scale(x='shared')
 
-        upper_bound_2sigma_line = alt.Chart(overlay_df).mark_line(
-            color='#ff6600', # 2-sigma upper bound
-            opacity=0.6
-        ).encode(
-            x='date:T',
-            y='upper_bound_2sigma:Q'
-        )
-
-        lower_bound_2sigma_line = alt.Chart(overlay_df).mark_line(
-            color='#33cc33', # 2-sigma lower bound
-            opacity=0.6
-        ).encode(
-            x='date:T',
-            y='lower_bound_2sigma:Q'
-        )
-
-        upper_bound_3sigma_line = alt.Chart(overlay_df).mark_line(
-            color='#cc0000', # 3-sigma upper bound
-            opacity=0.9
-        ).encode(
-            x='date:T',
-            y='upper_bound_3sigma:Q'
-        )
-
-        lower_bound_3sigma_line = alt.Chart(overlay_df).mark_line(
-            color='#009900', # 3-sigma lower bound
-            opacity=0.9
-        ).encode(
-            x='date:T',
-            y='lower_bound_3sigma:Q'
-        )
-
-        chart = alt.layer(chart, rolling_avg_line, upper_bound_line, lower_bound_line,
-                          upper_bound_2sigma_line, lower_bound_2sigma_line,
-                          upper_bound_3sigma_line, lower_bound_3sigma_line).resolve_scale(y='shared')
-
-    return chart
+    return final_chart
 
 
 # --- App Layout ---
@@ -160,12 +146,13 @@ if selected_symbol and selected_symbol != options[0]:
             data['lower_bound_2sigma'] = data['rolling_mean'] - 2 * data['rolling_std']
             data['upper_bound_3sigma'] = data['rolling_mean'] + 3 * data['rolling_std']
             data['lower_bound_3sigma'] = data['rolling_mean'] - 3 * data['rolling_std']
+        last_close = data['close'].iloc[-1]
+        prev_close = data['close'].iloc[-2]
+        delta = 100*(last_close - prev_close)/prev_close
 
-        st.subheader(f'Displaying data for {selected_symbol} ({data_type})')
+        st.metric(f'{selected_symbol} ({data_type})', value=last_close, delta=f"{delta:.2f}%")
         chart = create_ohlc_chart(data, rolling_window=rolling_window)
         st.altair_chart(chart, use_container_width=True)
         
-        st.subheader('Recent Data')
-        st.dataframe(data.tail())
     else:
         st.error(f"Could not load data for {selected_symbol}") 
