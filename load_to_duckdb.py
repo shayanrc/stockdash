@@ -86,7 +86,7 @@ def load_index_data(con):
             con.register('temp_index_df', df)
             
             insert_query = """
-            INSERT INTO index_prices
+            INSERT OR IGNORE INTO index_prices
             SELECT
                 Date,
                 INDEX_NAME,
@@ -131,7 +131,7 @@ def load_stock_data(con):
             con.register('temp_stock_df', df)
 
             insert_query = """
-            INSERT INTO stock_prices
+            INSERT OR IGNORE INTO stock_prices
             SELECT
                 DATE,
                 SYMBOL,
