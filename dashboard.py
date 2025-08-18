@@ -4,7 +4,8 @@ import altair as alt
 import duckdb
 import os
 
-st.title('Stock and Index OHLC Chart from DuckDB')
+st.set_page_config(layout="wide")
+st.title('Stock Dash')
 
 # --- Database Connection ---
 @st.cache_resource
@@ -18,13 +19,22 @@ def get_db_connection():
 con = get_db_connection()
 
 # --- Data Loading Functions ---
-def get_symbols(table_name):
+@st.cache_data
+def get_unified_symbols():
     """
-    Gets a list of symbols from the specified database table.
+    Gets a unified list of all symbols (stocks and indices) and a mapping to their type.
     """
-    query = f"SELECT DISTINCT symbol FROM {table_name}"
-    symbols = con.execute(query).df()['symbol'].tolist()
-    return sorted(symbols)
+    stocks_df = con.execute("SELECT DISTINCT symbol FROM stock_prices").df()
+    stocks = stocks_df['symbol'].tolist()
+    
+    indices_df = con.execute("SELECT DISTINCT symbol FROM index_prices").df()
+    indices = indices_df['symbol'].tolist()
+    
+    symbol_map = {symbol: 'Stock' for symbol in stocks}
+    symbol_map.update({symbol: 'Index' for symbol in indices})
+    
+    all_symbols = sorted(stocks + indices)
+    return all_symbols, symbol_map
 
 def load_data(symbol, data_type):
     """
@@ -58,20 +68,18 @@ def create_ohlc_chart(df):
     return chart
 
 # --- App Layout ---
-data_type = st.radio("Select data type", ('Stock', 'Index'))
+all_symbols, symbol_map = get_unified_symbols()
 
-if data_type == 'Stock':
-    symbols = get_symbols('stock_prices')
-else:
-    symbols = get_symbols('index_prices')
+# Use a single selectbox for search and selection
+options = ["Select or search for a symbol"] + all_symbols
+selected_symbol = st.selectbox('Search and select a symbol', options)
 
-selected_symbol = st.selectbox('Select a symbol', symbols)
-
-if selected_symbol:
+if selected_symbol and selected_symbol != options[0]:
+    data_type = symbol_map[selected_symbol]
     data = load_data(selected_symbol, data_type)
     
     if not data.empty:
-        st.subheader(f'Displaying data for {selected_symbol}')
+        st.subheader(f'Displaying data for {selected_symbol} ({data_type})')
         chart = create_ohlc_chart(data)
         st.altair_chart(chart, use_container_width=True)
     else:
