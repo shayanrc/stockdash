@@ -136,10 +136,17 @@ if selected_symbol and selected_symbol != options[0]:
     # Add a slider for the rolling average
     rolling_window = st.slider('simple moving average window (days)', min_value=1, max_value=500, value=5, step=1)
     
+    # Determine which price type to use for calculations
+    column_to_use = 'close'
+    if data_type == 'Stock':
+        price_type = st.radio("Base metric for calculations:", ('Close', 'VWAP'))
+        if price_type == 'VWAP':
+            column_to_use = 'vwap'
+    
     if not data.empty:
         if rolling_window:
-            data['rolling_mean'] = data['close'].rolling(window=rolling_window).mean()
-            data['rolling_std'] = data['close'].rolling(window=rolling_window).std()
+            data['rolling_mean'] = data[column_to_use].rolling(window=rolling_window).mean()
+            data['rolling_std'] = data[column_to_use].rolling(window=rolling_window).std()
             data['upper_bound'] = data['rolling_mean'] + data['rolling_std']
             data['lower_bound'] = data['rolling_mean'] - data['rolling_std']
             data['upper_bound_2sigma'] = data['rolling_mean'] + 2 * data['rolling_std']
