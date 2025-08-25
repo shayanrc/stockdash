@@ -133,15 +133,14 @@ if selected_symbol and selected_symbol != options[0]:
     data_type = symbol_map[selected_symbol]
     data = load_data(selected_symbol, data_type)
     
-    # Add a slider for the rolling average
-    rolling_window = st.slider('simple moving average window (days)', min_value=1, max_value=500, value=5, step=1)
-    
+    # Get widget values from session state, providing defaults for the first run
+    rolling_window = st.session_state.get('rolling_window', 5)
+    use_vwap = st.session_state.get('use_vwap', False)
+
     # Determine which price type to use for calculations
     column_to_use = 'close'
-    if data_type == 'Stock':
-        use_vwap = st.toggle("Volume Weighted")
-        if use_vwap:
-            column_to_use = 'vwap'
+    if data_type == 'Stock' and use_vwap:
+        column_to_use = 'vwap'
     
     if not data.empty:
         if rolling_window:
@@ -153,13 +152,24 @@ if selected_symbol and selected_symbol != options[0]:
             data['lower_bound_2sigma'] = data['rolling_mean'] - 2 * data['rolling_std']
             data['upper_bound_3sigma'] = data['rolling_mean'] + 3 * data['rolling_std']
             data['lower_bound_3sigma'] = data['rolling_mean'] - 3 * data['rolling_std']
-        last_close = data['close'].iloc[-1]
-        prev_close = data['close'].iloc[-2]
-        delta = 100*(last_close - prev_close)/prev_close
 
-        st.metric(f'{selected_symbol} ({data_type})', value=last_close, delta=f"{delta:.2f}%")
+        st.subheader(f'Displaying data for {selected_symbol} ({data_type})')
         chart = create_ohlc_chart(data, rolling_window=rolling_window)
         st.altair_chart(chart, use_container_width=True)
         
+        with st.container():
+            st.slider(
+                'simple moving average window (days)', 
+                min_value=1, 
+                max_value=500, 
+                value=5, 
+                step=1, 
+                key='rolling_window'
+            )
+            if data_type == 'Stock':
+                st.toggle("Volume Weighted", value=False, key='use_vwap')
+
+        # st.subheader('Recent Data')
+        # st.dataframe(data.tail())
     else:
         st.error(f"Could not load data for {selected_symbol}") 
