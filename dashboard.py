@@ -139,8 +139,8 @@ if selected_symbol and selected_symbol != options[0]:
     # Determine which price type to use for calculations
     column_to_use = 'close'
     if data_type == 'Stock':
-        price_type = st.radio("Base metric for calculations:", ('Close', 'VWAP'))
-        if price_type == 'VWAP':
+        use_vwap = st.toggle("Volume Weighted")
+        if use_vwap:
             column_to_use = 'vwap'
     
     if not data.empty:
