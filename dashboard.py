@@ -122,6 +122,10 @@ def create_ohlc_chart(df, rolling_window=None):
     return final_chart
 
 
+# --- Callback Functions ---
+def set_rolling_window(value):
+    st.session_state.rolling_window = value
+
 # --- App Layout ---
 all_symbols, symbol_map = get_unified_symbols()
 
@@ -154,20 +158,92 @@ if selected_symbol and selected_symbol != options[0]:
             data['lower_bound_3sigma'] = data['rolling_mean'] - 3 * data['rolling_std']
 
         st.subheader(f'Displaying data for {selected_symbol} ({data_type})')
+        
+        # --- Metrics Display ---
+        col1, col2, col3, col4 = st.columns(4)
+        col_lu, col5, col6, col7 = st.columns(4)
+
+        # Always display Price and Last Updated if data is available
+        if not data.empty:
+            price_delta_str = None
+            if len(data) >= 2:
+                price = data['close'].iloc[-1]
+                prev_price = data['close'].iloc[-2]
+                price_delta = ((price - prev_price) / prev_price) * 100
+                price_delta_str = f"{price_delta:.2f}%"
+            else:
+                price = data['close'].iloc[-1]
+                
+            col1.metric("Price", f"{price:,.2f}", delta=price_delta_str)
+            latest_date = data['date'].max().strftime('%b %d, %Y')
+            col_lu.metric("Last Updated", latest_date)
+
+        # Display sigma metrics only if a rolling window is active
+        if rolling_window and 'upper_bound' in data.columns:
+            required_cols = [
+                'close', 'upper_bound', 'lower_bound', 'upper_bound_2sigma', 
+                'lower_bound_2sigma', 'upper_bound_3sigma', 'lower_bound_3sigma'
+            ]
+            latest_metrics_df = data.dropna(subset=required_cols).tail(2)
+            
+            if not latest_metrics_df.empty:
+                latest_metrics = latest_metrics_df.iloc[-1]
+                upper_bound = latest_metrics['upper_bound']
+                lower_bound = latest_metrics['lower_bound']
+                upper_bound_2s = latest_metrics['upper_bound_2sigma']
+                lower_bound_2s = latest_metrics['lower_bound_2sigma']
+                upper_bound_3s = latest_metrics['upper_bound_3sigma']
+                lower_bound_3s = latest_metrics['lower_bound_3sigma']
+
+                delta_values = {}
+                if len(latest_metrics_df) == 2:
+                    previous_metrics = latest_metrics_df.iloc[0]
+                    delta_values['upper_bound'] = f"{upper_bound - previous_metrics['upper_bound']:.2f}"
+                    delta_values['lower_bound'] = f"{lower_bound - previous_metrics['lower_bound']:.2f}"
+                    delta_values['upper_bound_2s'] = f"{upper_bound_2s - previous_metrics['upper_bound_2sigma']:.2f}"
+                    delta_values['lower_bound_2s'] = f"{lower_bound_2s - previous_metrics['lower_bound_2sigma']:.2f}"
+                    delta_values['upper_bound_3s'] = f"{upper_bound_3s - previous_metrics['upper_bound_3sigma']:.2f}"
+                    delta_values['lower_bound_3s'] = f"{lower_bound_3s - previous_metrics['lower_bound_3sigma']:.2f}"
+
+                col2.metric("1 Sigma Upper", f"{upper_bound:,.2f}", delta=delta_values.get('upper_bound'))
+                col3.metric("2 Sigma Upper", f"{upper_bound_2s:,.2f}", delta=delta_values.get('upper_bound_2s'))
+                col4.metric("3 Sigma Upper", f"{upper_bound_3s:,.2f}", delta=delta_values.get('upper_bound_3s'))
+                col5.metric("1 Sigma Lower", f"{lower_bound:,.2f}", delta=delta_values.get('lower_bound'))
+                col6.metric("2 Sigma Lower", f"{lower_bound_2s:,.2f}", delta=delta_values.get('lower_bound_2s'))
+                col7.metric("3 Sigma Lower", f"{lower_bound_3s:,.2f}", delta=delta_values.get('lower_bound_3s'))
+
         chart = create_ohlc_chart(data, rolling_window=rolling_window)
         st.altair_chart(chart, use_container_width=True)
         
         with st.container():
             st.slider(
-                'simple moving average window (days)', 
-                min_value=1, 
+                'Simple Moving Average Window (days)', 
+                min_value=0, 
                 max_value=500, 
-                value=5, 
-                step=1, 
+                value=st.session_state.get('rolling_window', 5),
+                step=5, 
                 key='rolling_window'
             )
+
+            # --- Control Row for VWAP toggle and SMA presets ---
             if data_type == 'Stock':
-                st.toggle("Volume Weighted", value=False, key='use_vwap')
+                col1, col2, col3, col4, col5 = st.columns([2, 1, 1, 1, 1])
+                with col1:
+                    st.toggle("Volume Weighted", value=False, key='use_vwap')
+                
+                button_cols = [col2, col3, col4, col5]
+                button_values = [20, 50, 100, 200]
+                for i, val in enumerate(button_values):
+                    button_cols[i].button(f'{val} days', use_container_width=True, on_click=set_rolling_window, args=(val,))
+
+            else:
+                st.write("") # Placeholder to create space
+                col1, col2, col3, col4 = st.columns(4)
+                button_cols = [col1, col2, col3, col4]
+                button_values = [20, 50, 100, 200]
+
+                for i, val in enumerate(button_values):
+                    button_cols[i].button(f'{val} days', use_container_width=True, on_click=set_rolling_window, args=(val,))
 
         # st.subheader('Recent Data')
         # st.dataframe(data.tail())
