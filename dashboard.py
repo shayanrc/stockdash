@@ -4,7 +4,7 @@ import altair as alt
 import duckdb
 import os
 
-st.set_page_config(layout="wide")
+st.set_page_config(layout="wide", page_title="Stock Dash")
 st.title('Stock Dash')
 
 # --- Database Connection ---
