@@ -138,8 +138,13 @@ if selected_symbol and selected_symbol != options[0]:
     data = load_data(selected_symbol, data_type)
     
     # Get widget values from session state, providing defaults for the first run
-    rolling_window = st.session_state.get('rolling_window', 5)
-    use_vwap = st.session_state.get('use_vwap', False)
+    if 'rolling_window' not in st.session_state:
+        st.session_state['rolling_window'] = 5
+    if 'use_vwap' not in st.session_state:
+        st.session_state['use_vwap'] = False
+
+    rolling_window = st.session_state['rolling_window']
+    use_vwap = st.session_state['use_vwap']
 
     # Determine which price type to use for calculations
     column_to_use = 'close'
@@ -220,7 +225,6 @@ if selected_symbol and selected_symbol != options[0]:
                 'Simple Moving Average Window (days)', 
                 min_value=0, 
                 max_value=500, 
-                value=st.session_state.get('rolling_window', 5),
                 step=5, 
                 key='rolling_window'
             )
@@ -229,7 +233,7 @@ if selected_symbol and selected_symbol != options[0]:
             if data_type == 'Stock':
                 col1, col2, col3, col4, col5 = st.columns([2, 1, 1, 1, 1])
                 with col1:
-                    st.toggle("Volume Weighted", value=False, key='use_vwap')
+                    st.toggle("Volume Weighted", key='use_vwap')
                 
                 button_cols = [col2, col3, col4, col5]
                 button_values = [20, 50, 100, 200]
