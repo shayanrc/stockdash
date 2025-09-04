@@ -15,7 +15,6 @@ idna==3.10
 Jinja2==3.1.6
 jsonschema==4.25.0
 jsonschema-specifications==2025.4.1
-jugaad-data==0.27
 korean-lunar-calendar==0.3.1
 MarkupSafe==3.0.2
 narwhals==2.1.2
