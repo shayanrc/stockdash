@@ -15,42 +15,6 @@ def clean_col_names(df):
     df.columns = new_cols
     return df
 
-def create_tables(con):
-    """
-    Creates the tables in the DuckDB database if they do not already exist.
-    """
-    con.execute("""
-        CREATE TABLE IF NOT EXISTS index_prices (
-            date DATE,
-            symbol VARCHAR,
-            open DOUBLE,
-            high DOUBLE,
-            low DOUBLE,
-            close DOUBLE,
-            volume BIGINT,
-            turnover DOUBLE,
-            PRIMARY KEY (date, symbol)
-        );
-    """)
-    con.execute("""
-        CREATE TABLE IF NOT EXISTS stock_prices (
-            date DATE,
-            symbol VARCHAR,
-            series VARCHAR,
-            open DOUBLE,
-            high DOUBLE,
-            low DOUBLE,
-            prev_close DOUBLE,
-            ltp DOUBLE,
-            close DOUBLE,
-            vwap DOUBLE,
-            volume BIGINT,
-            value DOUBLE,
-            trades BIGINT,
-            PRIMARY KEY (date, symbol, series)
-        );
-    """)
-
 def get_latest_date(con, table, symbol_col, symbol):
     """
     Gets the latest date for a given symbol from a specified table.
@@ -135,7 +99,7 @@ def load_stock_data(con):
             SELECT
                 DATE,
                 SYMBOL,
-                SERIES,
+                'NSE' AS exchange,
                 OPEN,
                 HIGH,
                 LOW,
@@ -153,14 +117,12 @@ def load_stock_data(con):
             con.unregister('temp_stock_df')
             print(f"Loaded new data for stock: {stock_symbol}")
 
-def main():
+def main(db_file='stock_data.db'):
     """
-    Main function to connect to the database, create tables, and load data.
+    Main function to connect to the database and load data.
     """
-    db_file = 'stock_data.db'
     con = duckdb.connect(database=db_file, read_only=False)
     
-    create_tables(con)
     load_index_data(con)
     load_stock_data(con)
     
@@ -168,4 +130,8 @@ def main():
     print(f"Database '{db_file}' has been successfully updated.")
 
 if __name__ == "__main__":
-    main() 
+    import argparse
+    parser = argparse.ArgumentParser(description='Load CSV histories into DuckDB tables.')
+    parser.add_argument('--db-file', default='stock_data.db', help='Path to DuckDB database file')
+    args = parser.parse_args()
+    main(db_file=args.db_file) 
