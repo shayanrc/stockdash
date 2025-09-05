@@ -5,19 +5,28 @@ This document describes the end-to-end data flow and components of the Stock Das
 
 ### Data Flow Diagram
 ```mermaid
-graph TD
-  A["NSE APIs via nselib<br/>(capital_market.price_volume_data,<br/>capital_market.index_data)"]
+graph LR
 
-  subgraph Ingestion
-    B1["update.py<br/>calls download_stock_data(symbol, from, to)"]
-    B2["update_index.py<br/>calls download_index_data(index, from, to)"]
+  subgraph Sources
+    A["NSE APIs via nselib<br/>(capital_market.price_volume_data,<br/>capital_market.index_data)"]
+    C0["Universe CSV<br/>data/ind_nifty500list.csv"]
   end
 
-  C1["CSV files<br/>data/price_history/*.csv"]
-  C2["CSV files<br/>data/index_history/*.csv"]
-  C0["Universe CSV<br/>data/ind_nifty500list.csv"]
+  subgraph Ingestion
+    direction TB
+    B2["update_index.py<br/>download_index_data(index, from, to)"]
+    B1["update.py<br/>download_stock_data(symbol, from, to)"]
+    H["Symbols (from universe_stocks)"]
+  end
+
+  subgraph Staging
+    direction TB
+    C2["CSV files<br/>data/index_history/*.csv"]
+    C1["CSV files<br/>data/price_history/*.csv"]
+  end
 
   subgraph ETL / Storage
+    direction LR
     D0["init_local_db.py<br/>(create schemas)"]
     D1["populate_local_db.py<br/>(load universe_stocks from CSV)"]
     D2["load_to_duckdb.py<br/>(incremental load: stocks + indices)"]
@@ -29,29 +38,31 @@ graph TD
     G["Altair charts + metrics"]
   end
 
-  A -->|"stocks"| B1
-  A -->|"indices"| B2
+  %% Flows
+  A -->|indices| B2
+  A -->|stocks| B1
+  B2 -->|write| C2
+  B1 -->|write| C1
+  C2 -->|read| D2
+  C1 -->|read| D2
+  D2 -->|INSERT OR IGNORE| E
 
-  B1 -->|"write"| C1
-  B2 -->|"write"| C2
-
-  C1 -->|"read"| D2
-  C2 -->|"read"| D2
-
-  C0 -->|"read"| D1
-
+  C0 -->|read| D1
   D0 --> E
   D1 --> E
-  D2 -->|"INSERT OR IGNORE"| E
 
-  F -->|"read-only connect"| E
+  %% Universe symbols exposed near ingestion to avoid crossing blocks
+  E --> H
+  H --> B1
+
+  F -->|read-only connect| E
   F --> G
 ```
 
 ### Components
 - **Data sources**: NSE endpoints accessed through `nselib.capital_market`.
 - **Ingestion scripts**:
-  - `update.py`: Reads stock symbols (now from DuckDB `universe_stocks` once populated), downloads per-symbol history to `data/price_history/<SYMBOL>.csv`.
+  - `update.py`: Reads stock symbols from DuckDB `universe_stocks` (once populated), downloads per-symbol history to `data/price_history/<SYMBOL>.csv`. CLI: `--db-file`, `--exchange`, `--delay`.
   - `update_index.py`: Iterates a fixed set of indices and downloads history to `data/index_history/<INDEX>.csv`.
 - **ETL / Storage**:
   - `init_local_db.py`: Creates DuckDB schemas for `universe_stocks`, `index_prices`, and `stock_prices`. CLI: `--db-file`.
@@ -160,6 +171,8 @@ FROM temp_stock_df;
 ### Operations
 - **Initialize schemas**: `python init_local_db.py --db-file stock_data.db`
 - **Populate universe**: `python populate_local_db.py --db-file stock_data.db --csv-file data/ind_nifty500list.csv`
+- **Update stocks CSVs**: `python update.py --db-file stock_data.db --exchange NSE --delay 2`
+- **Update indices CSVs**: `python update_index.py`
 - **Load/refresh DB**: `python load_to_duckdb.py --db-file stock_data.db`
 - **Run dashboard**: `streamlit run dashboard.py`
 
