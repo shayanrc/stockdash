@@ -3,18 +3,32 @@ from datetime import date
 from download import download_stock_data
 import os
 import time
+import duckdb
+import argparse
 
-def read_stock_list(csv_file="data/ind_nifty500list.csv"):
+def read_stock_list(db_file: str = "stock_data.db", exchange: str = "NSE"):
     """
-    Read stock symbols from the CSV file.
+    Read stock symbols from DuckDB `universe_stocks` for the given exchange.
     """
     try:
-        df = pd.read_csv(csv_file)
+        con = duckdb.connect(database=db_file, read_only=True)
+        try:
+            df = con.execute(
+                """
+                SELECT DISTINCT "Symbol"
+                FROM universe_stocks
+                WHERE COALESCE("Exchange", 'NSE') = ?
+                ORDER BY "Symbol"
+                """,
+                [exchange],
+            ).df()
+        finally:
+            con.close()
         symbols = df['Symbol'].tolist()
-        print(f"Found {len(symbols)} stocks in the list")
+        print(f"Found {len(symbols)} stocks in the universe for {exchange}")
         return symbols
     except Exception as e:
-        print(f"Error reading stock list from {csv_file}: {e}")
+        print(f"Error reading stock list from DuckDB ({db_file}): {e}")
         return []
 
 def download_all_stocks(symbols, start_date, end_date, delay=1):
@@ -63,8 +77,14 @@ def download_all_stocks(symbols, start_date, end_date, delay=1):
     print(f"Success rate: {(successful_downloads/len(symbols)*100):.1f}%")
 
 if __name__ == "__main__":
-    # Read stock symbols from CSV file
-    stock_symbols = read_stock_list()
+    parser = argparse.ArgumentParser(description='Download historical stock data for the universe.')
+    parser.add_argument('--db-file', default='stock_data.db', help='Path to DuckDB database file')
+    parser.add_argument('--exchange', default='NSE', help='Exchange filter for universe (default: NSE)')
+    parser.add_argument('--delay', type=int, default=2, help='Delay between requests in seconds')
+    args = parser.parse_args()
+
+    # Read stock symbols from DuckDB
+    stock_symbols = read_stock_list(db_file=args.db_file, exchange=args.exchange)
     
     if not stock_symbols:
         print("No stock symbols found. Exiting.")
@@ -77,4 +97,4 @@ if __name__ == "__main__":
     print(f"Date range: {start_date} to {end_date}")
     
     # Download data for all stocks
-    download_all_stocks(stock_symbols, start_date, end_date, delay=2)
+    download_all_stocks(stock_symbols, start_date, end_date, delay=args.delay)
