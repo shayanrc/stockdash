@@ -15,10 +15,13 @@ graph TD
 
   C1["CSV files<br/>data/price_history/*.csv"]
   C2["CSV files<br/>data/index_history/*.csv"]
+  C0["Universe CSV<br/>data/ind_nifty500list.csv"]
 
   subgraph ETL / Storage
-    D["load_to_duckdb.py<br/>create_tables + incremental load"]
-    E["DuckDB: stock_data.db<br/>Tables: stock_prices, index_prices"]
+    D0["init_local_db.py<br/>(create schemas)"]
+    D1["populate_local_db.py<br/>(load universe_stocks from CSV)"]
+    D2["load_to_duckdb.py<br/>(incremental load: stocks + indices)"]
+    E["DuckDB: stock_data.db<br/>Tables: stock_prices, index_prices, universe_stocks"]
   end
 
   subgraph App
@@ -32,9 +35,14 @@ graph TD
   B1 -->|"write"| C1
   B2 -->|"write"| C2
 
-  C1 -->|"read"| D
-  C2 -->|"read"| D
-  D -->|"INSERT OR IGNORE"| E
+  C1 -->|"read"| D2
+  C2 -->|"read"| D2
+
+  C0 -->|"read"| D1
+
+  D0 --> E
+  D1 --> E
+  D2 -->|"INSERT OR IGNORE"| E
 
   F -->|"read-only connect"| E
   F --> G
@@ -43,10 +51,12 @@ graph TD
 ### Components
 - **Data sources**: NSE endpoints accessed through `nselib.capital_market`.
 - **Ingestion scripts**:
-  - `update.py`: Reads stock symbols from `data/ind_nifty500list.csv`, downloads per-symbol history to `data/price_history/<SYMBOL>.csv` via `download_stock_data`.
-  - `update_index.py`: Iterates a fixed set of indices and downloads history to `data/index_history/<INDEX>.csv` via `download_index_data`.
+  - `update.py`: Reads stock symbols (now from DuckDB `universe_stocks` once populated), downloads per-symbol history to `data/price_history/<SYMBOL>.csv`.
+  - `update_index.py`: Iterates a fixed set of indices and downloads history to `data/index_history/<INDEX>.csv`.
 - **ETL / Storage**:
-  - `load_to_duckdb.py`: Creates DuckDB tables if missing and incrementally loads new rows from CSV into `stock_data.db`.
+  - `init_local_db.py`: Creates DuckDB schemas for `universe_stocks`, `index_prices`, and `stock_prices`. CLI: `--db-file`.
+  - `populate_local_db.py`: Populates `universe_stocks` from `data/ind_nifty500list.csv`. CLI: `--db-file`, `--csv-file`.
+  - `load_to_duckdb.py`: Incrementally loads new rows from price/index CSVs into DuckDB. CLI: `--db-file`.
 - **Application**:
   - `dashboard.py`: Streamlit UI; queries DuckDB read-only, computes rolling metrics, and renders OHLC + volume charts with Altair.
 
@@ -54,14 +64,23 @@ graph TD
 - **Stocks (`download_stock_data`)**
   - If a CSV exists, determines existing min/max `DATE` and fetches only missing ranges.
   - Fetches in safe 60-day chunks via `_fetch_equity_history_nselib(symbol, from, to)`.
-  - Normalizes columns to: `DATE, OPEN, HIGH, LOW, CLOSE, VOLUME, SYMBOL, SERIES`.
+  - Normalizes columns to: `DATE, OPEN, HIGH, LOW, CLOSE, VOLUME, SYMBOL, SERIES` (CSV).
   - De-duplicates by `DATE` and sorts before writing.
 - **Indices (`download_index_data`)**
   - Calls `capital_market.index_data` for `[from_date, to_date]` and writes CSV after renaming `TIMESTAMP→Date`, `CLOSE_INDEX_VAL→Close`.
 
-### ETL details (`load_to_duckdb.py`)
-- Creates tables if not present:
+### Database schemas (`init_local_db.py`)
+- Creates the following tables if not present:
 ```sql
+CREATE TABLE IF NOT EXISTS universe_stocks (
+  "Company Name" VARCHAR NOT NULL,
+  "Industry"     VARCHAR,
+  "Symbol"       VARCHAR NOT NULL,
+  "Exchange"     VARCHAR DEFAULT 'NSE',
+  "code"         VARCHAR,
+  PRIMARY KEY ("Symbol", "Exchange")
+);
+
 CREATE TABLE IF NOT EXISTS index_prices (
   date DATE,
   symbol VARCHAR,
@@ -77,7 +96,7 @@ CREATE TABLE IF NOT EXISTS index_prices (
 CREATE TABLE IF NOT EXISTS stock_prices (
   date DATE,
   symbol VARCHAR,
-  series VARCHAR,
+  exchange VARCHAR,
   open DOUBLE,
   high DOUBLE,
   low DOUBLE,
@@ -88,15 +107,34 @@ CREATE TABLE IF NOT EXISTS stock_prices (
   volume BIGINT,
   value DOUBLE,
   trades BIGINT,
-  PRIMARY KEY (date, symbol, series)
+  PRIMARY KEY (date, symbol, exchange)
 );
 ```
-- Incremental load strategy:
-  - For each file, query `MAX(date)` per `symbol` from the target table.
-  - Read CSV, drop duplicates, parse dates (`%Y-%m-%d` for stocks as `DATE`; `%d-%m-%Y` for indices as `Date`).
-  - Keep only rows where CSV date is strictly newer than the latest stored date.
-  - Clean column names to alphanumerics/underscore (`clean_col_names`).
-  - Use a registered temp view and `INSERT OR IGNORE` to load the expected columns.
+
+### ETL details
+- **Populate universe (`populate_local_db.py`)**
+  - Loads from `data/ind_nifty500list.csv` with mapping: `Series`→`Exchange='NSE'`, `ISIN Code`→`code`.
+- **Load histories (`load_to_duckdb.py`)**
+  - Index data: inserts into `index_prices` selecting expected fields.
+  - Stock data: inserts into `stock_prices` with `exchange` set to `'NSE'`:
+```sql
+INSERT OR IGNORE INTO stock_prices
+SELECT
+  DATE,
+  SYMBOL,
+  'NSE' AS exchange,
+  OPEN,
+  HIGH,
+  LOW,
+  PREVCLOSE,
+  LTP,
+  CLOSE,
+  VWAP,
+  VOLUME,
+  VALUE,
+  NOOFTRADES
+FROM temp_stock_df;
+```
 
 ### Dashboard and analytics (`dashboard.py`)
 - Maintains a cached read-only DuckDB connection (`st.cache_resource`).
@@ -110,16 +148,19 @@ CREATE TABLE IF NOT EXISTS stock_prices (
 ### Data formats
 - **Stock CSV** (per symbol): `DATE, OPEN, HIGH, LOW, CLOSE, VOLUME, SYMBOL, SERIES`.
 - **Index CSV** (per index): includes `Date`, `Close`, and other NSE-provided columns; file name uses underscores for spaces.
-- **Database tables**: `stock_prices` and `index_prices` as defined above.
+- **Database tables**:
+  - `universe_stocks`: company metadata and exchange/code mapping.
+  - `stock_prices`: OHLCV and related fields with `exchange` key.
+  - `index_prices`: OHLCV and turnover for indices.
 
 ### Incrementality and idempotency
 - Ingestion fetches only missing date ranges relative to existing CSVs.
-- ETL inserts only rows with `date > MAX(date)` per `symbol` and relies on primary keys plus `INSERT OR IGNORE` for safety.
+- ETL inserts only rows with `date > MAX(date)` per symbol; `INSERT OR IGNORE` guards PK collisions.
 
 ### Operations
-- **Update stocks**: `python update.py`
-- **Update indices**: `python update_index.py`
-- **Load/refresh DB**: `python load_to_duckdb.py`
+- **Initialize schemas**: `python init_local_db.py --db-file stock_data.db`
+- **Populate universe**: `python populate_local_db.py --db-file stock_data.db --csv-file data/ind_nifty500list.csv`
+- **Load/refresh DB**: `python load_to_duckdb.py --db-file stock_data.db`
 - **Run dashboard**: `streamlit run dashboard.py`
 
 ### Caching and performance
@@ -129,7 +170,9 @@ CREATE TABLE IF NOT EXISTS stock_prices (
 - `download.py`: API integration and CSV writing for stocks/indices.
 - `update.py`: Batch stock downloader (respects delay between requests).
 - `update_index.py`: Batch index downloader (respects delay).
-- `load_to_duckdb.py`: Table creation and incremental loads from CSV to DuckDB.
+- `init_local_db.py`: Creates DuckDB schemas.
+- `populate_local_db.py`: Populates `universe_stocks` from CSV.
+- `load_to_duckdb.py`: Incremental loads from CSV to DuckDB.
 - `dashboard.py`: Streamlit application (query, compute, visualize).
 - `data/price_history/`: Per-stock CSVs.
 - `data/index_history/`: Per-index CSVs.
