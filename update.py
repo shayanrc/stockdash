@@ -31,7 +31,7 @@ def read_stock_list(db_file: str = "data/db/stock.duckdb", exchange: str = "NSE"
         print(f"Error reading stock list from DuckDB ({db_file}): {e}")
         return []
 
-def download_all_stocks(symbols, start_date, end_date, delay=1):
+def download_all_stocks(symbols, start_date, end_date, delay=1, db_file=None):
     """
     Download data for all stocks with a delay between requests to avoid rate limiting.
     """
@@ -53,7 +53,8 @@ def download_all_stocks(symbols, start_date, end_date, delay=1):
                 symbol=symbol,
                 from_date=start_date,
                 to_date=end_date,
-                filename=filepath
+                filename=filepath,
+                db_file=db_file,
             )
             successful_downloads += 1
             print(f"✓ Successfully downloaded data for {symbol}")
@@ -77,24 +78,43 @@ def download_all_stocks(symbols, start_date, end_date, delay=1):
     print(f"Success rate: {(successful_downloads/len(symbols)*100):.1f}%")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Download historical stock data for the universe.')
+    parser = argparse.ArgumentParser(description='Download historical stock data for the universe or a single symbol.')
     parser.add_argument('--db-file', default='data/db/stock.duckdb', help='Path to DuckDB database file')
     parser.add_argument('--exchange', default='NSE', help='Exchange filter for universe (default: NSE)')
     parser.add_argument('--delay', type=int, default=2, help='Delay between requests in seconds')
+    parser.add_argument('--symbol', help='Download only this single stock symbol (e.g., RELIANCE)')
     args = parser.parse_args()
 
-    # Read stock symbols from DuckDB
-    stock_symbols = read_stock_list(db_file=args.db_file, exchange=args.exchange)
-    
-    if not stock_symbols:
-        print("No stock symbols found. Exiting.")
-        exit(1)
-    
     # Set date range
     start_date = date(2020, 1, 1)
     end_date = date.today()
-    
     print(f"Date range: {start_date} to {end_date}")
-    
-    # Download data for all stocks
-    download_all_stocks(stock_symbols, start_date, end_date, delay=args.delay)
+
+    if args.symbol:
+        # Single-symbol path
+        symbol = args.symbol.strip().upper()
+        os.makedirs("data/cache/price_history", exist_ok=True)
+        filepath = f"data/cache/price_history/{symbol}.csv"
+        print(f"Downloading single symbol: {symbol}")
+        try:
+            download_stock_data(
+                symbol=symbol,
+                from_date=start_date,
+                to_date=end_date,
+                filename=filepath,
+                db_file=args.db_file,
+            )
+            print(f"✓ Successfully downloaded data for {symbol}")
+        except Exception as e:
+            print(f"✗ Failed to download data for {symbol}: {e}")
+    else:
+        # Multi-symbol path
+        # Read stock symbols from DuckDB
+        stock_symbols = read_stock_list(db_file=args.db_file, exchange=args.exchange)
+        
+        if not stock_symbols:
+            print("No stock symbols found. Exiting.")
+            exit(1)
+        
+        # Download data for all stocks
+        download_all_stocks(stock_symbols, start_date, end_date, delay=args.delay, db_file=args.db_file)
