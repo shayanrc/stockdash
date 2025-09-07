@@ -6,7 +6,7 @@ import time
 import duckdb
 import argparse
 
-def read_stock_list(db_file: str = "stock_data.db", exchange: str = "NSE"):
+def read_stock_list(db_file: str = "data/db/stock.duckdb", exchange: str = "NSE"):
     """
     Read stock symbols from DuckDB `universe_stocks` for the given exchange.
     """
@@ -36,7 +36,7 @@ def download_all_stocks(symbols, start_date, end_date, delay=1):
     Download data for all stocks with a delay between requests to avoid rate limiting.
     """
     # Create data directory if it doesn't exist
-    os.makedirs("data/price_history", exist_ok=True)
+    os.makedirs("data/cache/price_history", exist_ok=True)
     
     successful_downloads = 0
     failed_downloads = []
@@ -46,7 +46,7 @@ def download_all_stocks(symbols, start_date, end_date, delay=1):
         print(f"Processing {i}/{len(symbols)}: {symbol}")
         print(f"{'='*60}")
         
-        filepath = f"data/price_history/{symbol}.csv"
+        filepath = f"data/cache/price_history/{symbol}.csv"
         
         try:
             download_stock_data(
@@ -78,7 +78,7 @@ def download_all_stocks(symbols, start_date, end_date, delay=1):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Download historical stock data for the universe.')
-    parser.add_argument('--db-file', default='stock_data.db', help='Path to DuckDB database file')
+    parser.add_argument('--db-file', default='data/db/stock.duckdb', help='Path to DuckDB database file')
     parser.add_argument('--exchange', default='NSE', help='Exchange filter for universe (default: NSE)')
     parser.add_argument('--delay', type=int, default=2, help='Delay between requests in seconds')
     args = parser.parse_args()

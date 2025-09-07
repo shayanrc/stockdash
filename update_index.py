@@ -25,7 +25,7 @@ def download_all_indices(indices, start_date, end_date, delay=1):
     Download data for all indices with a delay between requests to avoid rate limiting.
     """
     # Create data directory if it doesn't exist
-    os.makedirs("data/index_history", exist_ok=True)
+    os.makedirs("data/cache/index_history", exist_ok=True)
     
     successful_downloads = 0
     failed_downloads = []
@@ -35,7 +35,7 @@ def download_all_indices(indices, start_date, end_date, delay=1):
         print(f"Processing {i}/{len(indices)}: {index_name}")
         print(f"{'='*60}")
         
-        filepath = f"data/index_history/{index_name.replace(' ', '_')}.csv"
+        filepath = f"data/cache/index_history/{index_name.replace(' ', '_')}.csv"
         
         try:
             download_index_data(

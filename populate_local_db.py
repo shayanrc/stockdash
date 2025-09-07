@@ -2,8 +2,8 @@ import duckdb
 import os
 import argparse
 
-DB_FILE = 'stock_data.db'
-CSV_FILE = 'data/ind_nifty500list.csv'
+DB_FILE = 'data/db/stock.duckdb'
+CSV_FILE = 'data/universe/nse_nifty500.csv'
 
 INSERT_SQL = """
 INSERT OR REPLACE INTO universe_stocks ("Company Name","Industry","Symbol","Exchange","code")

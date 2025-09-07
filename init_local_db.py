@@ -2,7 +2,7 @@ import duckdb
 import os
 import argparse
 
-DB_FILE = 'stock_data.db'
+DB_FILE = 'data/db/stock.duckdb'
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS universe_stocks (
