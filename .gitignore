@@ -61,6 +61,8 @@ venv.bak/
 .idea/
 .vscode/
 
-# Data files
-data/index_history/
-data/price_history/
+# Data files (cache)
+data/cache/index_history/
+data/cache/price_history/
+# Database file
+data/db/stock.duckdb
