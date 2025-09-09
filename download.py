@@ -3,6 +3,7 @@ from datetime import date, timedelta
 import pandas as pd
 from nselib import capital_market
 import duckdb
+from jugaad_data.nse import stock_df
 
 
 def _fetch_equity_history_nselib(symbol: str, from_date: date, to_date: date, series: str = "EQ") -> pd.DataFrame:
@@ -107,6 +108,58 @@ def _fetch_equity_history_nselib(symbol: str, from_date: date, to_date: date, se
     return out
 
 
+def _normalize_jugaad_stock_df(df: pd.DataFrame, symbol: str, series: str = "EQ") -> pd.DataFrame:
+    """
+    Minimal normalization for jugaad_data.nse.stock_df output:
+    - Rename: 'PREV. CLOSE' -> 'PREVCLOSE', 'NO OF TRADES' -> 'NOOFTRADES'
+    - Drop: '52W H', '52W L'
+    - Ensure DATE is a date type
+    - Ensure SYMBOL and SERIES present
+    """
+    if df is None or df.empty:
+        return pd.DataFrame(columns=[
+            "DATE", "OPEN", "HIGH", "LOW", "PREVCLOSE", "LTP", "CLOSE", "VWAP", "VOLUME", "VALUE", "NOOFTRADES", "SYMBOL", "SERIES"
+        ])
+
+    out = df.copy()
+
+    # Minimal renames
+    rename_map: dict[str, str] = {}
+    if 'PREV. CLOSE' in out.columns:
+        rename_map['PREV. CLOSE'] = 'PREVCLOSE'
+    if 'NO OF TRADES' in out.columns:
+        rename_map['NO OF TRADES'] = 'NOOFTRADES'
+    if rename_map:
+        out = out.rename(columns=rename_map)
+
+    # Drop 52-week columns if present
+    drop_cols = [c for c in ['52W H', '52W L'] if c in out.columns]
+    if drop_cols:
+        out = out.drop(columns=drop_cols)
+
+    # Parse DATE to date
+    if 'DATE' in out.columns:
+        out['DATE'] = pd.to_datetime(out['DATE'], errors='coerce').dt.date
+
+    # Ensure SYMBOL and SERIES present
+    if 'SYMBOL' not in out.columns:
+        out['SYMBOL'] = symbol
+    if 'SERIES' not in out.columns:
+        out['SERIES'] = series
+
+    # Reorder to preferred order when available
+    preferred = ["DATE", "OPEN", "HIGH", "LOW", "PREVCLOSE", "LTP", "CLOSE", "VWAP", "VOLUME", "VALUE", "NOOFTRADES", "SYMBOL", "SERIES"]
+    ordered = [c for c in preferred if c in out.columns]
+    remaining = [c for c in out.columns if c not in ordered]
+    normalized = out[ordered + remaining]
+
+    normalized = normalized.dropna(subset=["DATE"])  # type: ignore[arg-type]
+    normalized = normalized.drop_duplicates(subset=["DATE"], keep='last')
+    normalized = normalized.sort_values(by="DATE").reset_index(drop=True)
+    return normalized
+
+
+
 def download_stock_data(symbol, from_date, to_date, filename=None, db_file=None):
     """
     Download historical stock data for a given symbol and date range.
@@ -148,6 +201,21 @@ def download_stock_data(symbol, from_date, to_date, filename=None, db_file=None)
 
     new_data_list = []
 
+    def fetch_with_primary_and_fallback(f: date, t: date) -> pd.DataFrame:
+        # Primary: jugaad_data.nse.stock_df (fast)
+        try:
+            jd = stock_df(symbol=symbol, from_date=f, to_date=t, series="EQ")
+            return _normalize_jugaad_stock_df(jd, symbol=symbol, series="EQ")
+        except Exception as e:
+            # Treat CH_* KeyError as 'no data' (pre-listing or unavailable); skip fallback to nselib
+            if isinstance(e, KeyError) and ("CH_" in str(e)):
+                print(f"No jugaad-data data for {symbol} {f} to {t} (likely pre-listing). Skipping this range.")
+                return pd.DataFrame(columns=[
+                    "DATE", "OPEN", "HIGH", "LOW", "PREVCLOSE", "LTP", "CLOSE", "VWAP", "VOLUME", "VALUE", "NOOFTRADES", "SYMBOL", "SERIES"
+                ])
+            print(f"Primary fetch via jugaad-data failed for {symbol} {f} to {t}: {e}. Falling back to nselib.")
+            return _fetch_equity_history_nselib(symbol=symbol, from_date=f, to_date=t, series="EQ")
+
     if existing_df is not None and not existing_df.empty:
         min_date_in_file = existing_df['DATE'].min()
         max_date_in_file = existing_df['DATE'].max()
@@ -158,11 +226,9 @@ def download_stock_data(symbol, from_date, to_date, filename=None, db_file=None)
         if from_date < min_date_in_file:
             print(f"Fetching data from {from_date} to {min_date_in_file - timedelta(days=1)}")
             try:
-                before_df = _fetch_equity_history_nselib(
-                    symbol=symbol,
-                    from_date=from_date,
-                    to_date=min_date_in_file - timedelta(days=1),
-                    series="EQ",
+                before_df = fetch_with_primary_and_fallback(
+                    f=from_date,
+                    t=min_date_in_file - timedelta(days=1),
                 )
                 new_data_list.append(before_df)
             except Exception as e:
@@ -173,11 +239,9 @@ def download_stock_data(symbol, from_date, to_date, filename=None, db_file=None)
         if effective_max_existing is not None and to_date > effective_max_existing:
             print(f"Fetching data from {effective_max_existing + timedelta(days=1)} to {to_date}")
             try:
-                after_df = _fetch_equity_history_nselib(
-                    symbol=symbol,
-                    from_date=effective_max_existing + timedelta(days=1),
-                    to_date=to_date,
-                    series="EQ",
+                after_df = fetch_with_primary_and_fallback(
+                    f=effective_max_existing + timedelta(days=1),
+                    t=to_date,
                 )
                 new_data_list.append(after_df)
             except Exception as e:
@@ -190,11 +254,9 @@ def download_stock_data(symbol, from_date, to_date, filename=None, db_file=None)
             try:
                 from_after = db_max_date + timedelta(days=1)
                 if from_after <= to_date:
-                    after_df = _fetch_equity_history_nselib(
-                        symbol=symbol,
-                        from_date=from_after,
-                        to_date=to_date,
-                        series="EQ",
+                    after_df = fetch_with_primary_and_fallback(
+                        f=from_after,
+                        t=to_date,
                     )
                     new_data_list.append(after_df)
                 else:
@@ -204,11 +266,9 @@ def download_stock_data(symbol, from_date, to_date, filename=None, db_file=None)
         else:
             print("No existing data found in CSV or DB. Downloading full date range.")
             try:
-                full_df = _fetch_equity_history_nselib(
-                    symbol=symbol,
-                    from_date=from_date,
-                    to_date=to_date,
-                    series="EQ",
+                full_df = fetch_with_primary_and_fallback(
+                    f=from_date,
+                    t=to_date,
                 )
                 new_data_list.append(full_df)
             except Exception as e:
