@@ -36,7 +36,7 @@ def load_index_data(con):
             
             df = pd.read_csv(filepath)
             df.drop_duplicates(inplace=True)
-            df['Date'] = pd.to_datetime(df['Date'], format='%d-%m-%Y')
+            df['Date'] = pd.to_datetime(df['Date'])
 
             if latest_date:
                 df = df[df['Date'] > pd.to_datetime(latest_date)]
