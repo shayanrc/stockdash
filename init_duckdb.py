@@ -48,12 +48,22 @@ CREATE TABLE IF NOT EXISTS stock_prices (
 );
 """
 
+UNIVERSE_INDEXES_SQL = """
+CREATE TABLE IF NOT EXISTS universe_indexes (
+  "Index"    VARCHAR NOT NULL,
+  "Exchange" VARCHAR DEFAULT 'NSE',
+  "Type"     VARCHAR,
+  PRIMARY KEY ("Index", "Exchange")
+);
+"""
+
 def main(db_file=DB_FILE):
 	con = duckdb.connect(database=db_file, read_only=False)
 	try:
 		con.execute(SCHEMA_SQL)
 		con.execute(INDEX_PRICES_SQL)
 		con.execute(STOCK_PRICES_SQL)
+		con.execute(UNIVERSE_INDEXES_SQL)
 		print("Schemas ensured in DuckDB")
 	finally:
 		con.close()

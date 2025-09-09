@@ -3,22 +3,47 @@ from datetime import date
 from download import download_index_data
 import os
 import time
+import duckdb
+import argparse
 
-def get_index_list():
+
+def read_index_list(db_file: str = "data/db/stock.duckdb", exchange: str = "NSE", index_type: str | None = None):
     """
-    Return a list of Nifty indices to download.
+    Read index names from DuckDB `universe_indexes` for the given exchange and optional type.
     """
-    return [
-        "NIFTY 50",
-        "NIFTY NEXT 50",
-        "NIFTY 100",
-        "NIFTY 200",
-        "NIFTY 500",
-        "NIFTY MIDCAP 50",
-        "NIFTY SMALLCAP 50",
-        "NIFTY BANK",
-        "NIFTY IT",
-    ]
+    try:
+        con = duckdb.connect(database=db_file, read_only=True)
+        try:
+            if index_type:
+                df = con.execute(
+                    """
+                    SELECT DISTINCT "Index"
+                    FROM universe_indexes
+                    WHERE COALESCE("Exchange", 'NSE') = ?
+                      AND ("Type" = ?)
+                    ORDER BY "Index"
+                    """,
+                    [exchange, index_type],
+                ).df()
+            else:
+                df = con.execute(
+                    """
+                    SELECT DISTINCT "Index"
+                    FROM universe_indexes
+                    WHERE COALESCE("Exchange", 'NSE') = ?
+                    ORDER BY "Index"
+                    """,
+                    [exchange],
+                ).df()
+        finally:
+            con.close()
+        indices = df['Index'].tolist()
+        print(f"Found {len(indices)} indices for {exchange}{' / ' + index_type if index_type else ''}")
+        return indices
+    except Exception as e:
+        print(f"Error reading indexes from DuckDB ({db_file}): {e}")
+        return []
+
 
 def download_all_indices(indices, start_date, end_date, delay=1):
     """
@@ -69,9 +94,17 @@ def download_all_indices(indices, start_date, end_date, delay=1):
     if len(indices) > 0:
         print(f"Success rate: {(successful_downloads/len(indices)*100):.1f}%")
 
+
 if __name__ == "__main__":
-    # Get list of indices
-    indices_to_download = get_index_list()
+    parser = argparse.ArgumentParser(description='Download historical index data for the universe or a filtered set.')
+    parser.add_argument('--db-file', default='data/db/stock.duckdb', help='Path to DuckDB database file')
+    parser.add_argument('--exchange', default='NSE', help='Exchange filter for universe (default: NSE)')
+    parser.add_argument('--type', dest='index_type', help='Optional index type filter (e.g., "Sectoral")')
+    parser.add_argument('--delay', type=int, default=2, help='Delay between requests in seconds')
+    args = parser.parse_args()
+
+    # Get list of indices from DB
+    indices_to_download = read_index_list(db_file=args.db_file, exchange=args.exchange, index_type=args.index_type)
     
     if not indices_to_download:
         print("No indices found. Exiting.")
@@ -84,4 +117,4 @@ if __name__ == "__main__":
     print(f"Date range: {start_date} to {end_date}")
     
     # Download data for all indices
-    download_all_indices(indices_to_download, start_date, end_date, delay=2) 
+    download_all_indices(indices_to_download, start_date, end_date, delay=args.delay) 
