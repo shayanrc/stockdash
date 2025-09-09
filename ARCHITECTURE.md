@@ -15,8 +15,8 @@ graph LR
 
   subgraph Ingestion
     direction TB
-    B2["update_indices.py<br/>download_index_data(index, from, to)"]
-    B1["update_stocks.py<br/>download_stock_data(symbol, from, to)"]
+    B2["update_indices.py<br/>NSEClient.download_index_data(index, from, to)"]
+    B1["update_stocks.py<br/>NSEClient.download_stock_data(symbol, from, to)"]
     H["Symbols (from universe_stocks)"]
     H2["Indexes (from universe_indexes)"]
   end
@@ -77,12 +77,12 @@ graph LR
   - `dashboard.py`: Streamlit UI; queries DuckDB read-only, computes rolling metrics, and renders OHLC + volume charts with Altair.
 
 ### Ingestion details
-- **Stocks (`download_stock_data`)**
+- **Stocks (`NSEClient.download_stock_data`)**
   - Determines missing ranges using existing CSV bounds for starts and prefers DuckDB `stock_prices.max(date)` for end-date when available; if CSV is absent but DB has history, continues from the DB end-date.
-  - Fetches in safe 60-day chunks via `_fetch_equity_history_nselib(symbol, from, to)`.
+  - Fetches in safe 60-day chunks via `NSEClient._fetch_equity_history_nselib(symbol, from, to)` when the primary source is unavailable.
   - Normalizes columns to: `DATE, OPEN, HIGH, LOW, PREVCLOSE, LTP, CLOSE, VWAP, VOLUME, VALUE, NOOFTRADES, SYMBOL, SERIES` (CSV).
   - De-duplicates by `DATE` and sorts before writing.
-- **Indices (`download_index_data`)**
+- **Indices (`NSEClient.download_index_data`)**
   - Calls `capital_market.index_data` for `[from_date, to_date]` and writes CSV after renaming `TIMESTAMP→Date`, `CLOSE_INDEX_VAL→Close`.
   - Index list comes from DuckDB `universe_indexes` populated from `data/universe/nse_indices.csv`.
 
@@ -196,7 +196,7 @@ FROM temp_stock_df;
 - Streamlit uses `@st.cache_resource` for the DuckDB connection and `@st.cache_data` for symbol lists/data loading, reducing repeated I/O.
 
 ### Repository layout
-- `download.py`: API integration and CSV writing for stocks/indices.
+- `download.py`: API integration and CSV writing for stocks/indices; exposes `NSEClient` class.
 - `update_stocks.py`: Batch or single-stock downloader (respects delay between requests).
 - `update_indices.py`: Batch index downloader; reads list from `universe_indexes` (respects delay).
 - `init_duckdb.py`: Creates DuckDB schemas.

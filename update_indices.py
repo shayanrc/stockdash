@@ -1,6 +1,6 @@
 import pandas as pd
 from datetime import date
-from download import download_index_data
+from download import NSEClient
 import os
 import time
 import duckdb
@@ -51,6 +51,7 @@ def download_all_indices(indices, start_date, end_date, delay=1):
     """
     # Create data directory if it doesn't exist
     os.makedirs("data/cache/index_history", exist_ok=True)
+    client = NSEClient()
     
     successful_downloads = 0
     failed_downloads = []
@@ -63,7 +64,7 @@ def download_all_indices(indices, start_date, end_date, delay=1):
         filepath = f"data/cache/index_history/{index_name.replace(' ', '_')}.csv"
         
         try:
-            download_index_data(
+            client.download_index_data(
                 symbol=index_name,
                 from_date=start_date,
                 to_date=end_date,

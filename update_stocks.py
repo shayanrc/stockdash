@@ -1,6 +1,6 @@
 import pandas as pd
 from datetime import date
-from download import download_stock_data
+from download import NSEClient
 import os
 import time
 import duckdb
@@ -37,6 +37,7 @@ def download_all_stocks(symbols, start_date, end_date, delay=1, db_file=None):
     """
     # Create data directory if it doesn't exist
     os.makedirs("data/cache/price_history", exist_ok=True)
+    client = NSEClient(db_file=db_file)
     
     successful_downloads = 0
     failed_downloads = []
@@ -49,12 +50,11 @@ def download_all_stocks(symbols, start_date, end_date, delay=1, db_file=None):
         filepath = f"data/cache/price_history/{symbol}.csv"
         
         try:
-            download_stock_data(
+            client.download_stock_data(
                 symbol=symbol,
                 from_date=start_date,
                 to_date=end_date,
                 filename=filepath,
-                db_file=db_file,
             )
             successful_downloads += 1
             print(f"✓ Successfully downloaded data for {symbol}")
@@ -96,13 +96,13 @@ if __name__ == "__main__":
         os.makedirs("data/cache/price_history", exist_ok=True)
         filepath = f"data/cache/price_history/{symbol}.csv"
         print(f"Downloading single symbol: {symbol}")
+        client = NSEClient(db_file=args.db_file)
         try:
-            download_stock_data(
+            client.download_stock_data(
                 symbol=symbol,
                 from_date=start_date,
                 to_date=end_date,
                 filename=filepath,
-                db_file=args.db_file,
             )
             print(f"✓ Successfully downloaded data for {symbol}")
         except Exception as e:
