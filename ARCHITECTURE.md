@@ -196,7 +196,7 @@ FROM temp_stock_df;
 - Streamlit uses `@st.cache_resource` for the DuckDB connection and `@st.cache_data` for symbol lists/data loading, reducing repeated I/O.
 
 ### Repository layout
-- `download.py`: API integration and CSV writing for stocks/indices; exposes `NSEClient` class.
+- `clients/`: Client package. `clients.nse_client.NSEClient` provides API integration and CSV writing for stocks/indices and is re-exported via `from clients import NSEClient`. 
 - `update_stocks.py`: Batch or single-stock downloader (respects delay between requests).
 - `update_indices.py`: Batch index downloader; reads list from `universe_indexes` (respects delay).
 - `init_duckdb.py`: Creates DuckDB schemas.

@@ -3,7 +3,7 @@ import pandas as pd
 import tempfile
 from datetime import date
 
-from download import NSEClient
+from clients import NSEClient
 
 
 class DummyCapitalMarket:
@@ -31,10 +31,10 @@ def dummy_stock_df(symbol, from_date, to_date, series):
 
 
 def test_download_stock_data_appends_after_existing_csv(monkeypatch):
-	# Monkeypatch external deps
-	import download as download_module
-	monkeypatch.setattr(download_module, "stock_df", dummy_stock_df)
-	monkeypatch.setattr(download_module, "capital_market", DummyCapitalMarket)
+	# Monkeypatch external deps via NSEClient accessors
+	import clients.nse_client as nse_client_module
+	monkeypatch.setattr(nse_client_module.NSEClient, "_get_stock_df", lambda self: dummy_stock_df)
+	monkeypatch.setattr(nse_client_module.NSEClient, "_get_capital_market", lambda self: DummyCapitalMarket)
 
 	# Build client with no DB
 	client = NSEClient(db_file=None)
@@ -82,10 +82,10 @@ def test_download_stock_data_uses_db_max_date(monkeypatch, tmp_path):
 	finally:
 		con.close()
 
-	# Monkeypatch network calls
-	import download as download_module
-	monkeypatch.setattr(download_module, "stock_df", dummy_stock_df)
-	monkeypatch.setattr(download_module, "capital_market", DummyCapitalMarket)
+	# Monkeypatch network calls via NSEClient accessors
+	import clients.nse_client as nse_client_module
+	monkeypatch.setattr(nse_client_module.NSEClient, "_get_stock_df", lambda self: dummy_stock_df)
+	monkeypatch.setattr(nse_client_module.NSEClient, "_get_capital_market", lambda self: DummyCapitalMarket)
 
 	client = NSEClient(db_file=str(db_file))
 

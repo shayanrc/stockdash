@@ -1,7 +1,7 @@
 import pandas as pd
 from datetime import date
 
-from download import NSEClient
+from clients import NSEClient
 
 
 def test_normalize_jugaad_stock_df_basic():

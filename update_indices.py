@@ -1,6 +1,6 @@
 import pandas as pd
 from datetime import date
-from download import NSEClient
+from clients import NSEClient
 import os
 import time
 import duckdb

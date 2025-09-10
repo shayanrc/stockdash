@@ -3,7 +3,7 @@ import pandas as pd
 import tempfile
 from datetime import date
 
-from download import NSEClient
+from clients import NSEClient
 
 
 class DummyCapitalMarket:
@@ -20,9 +20,9 @@ class DummyCapitalMarket:
 def test_download_index_data_writes_csv_and_renames(monkeypatch):
 	client = NSEClient()
 
-	# Monkeypatch the capital_market module inside download module
-	import download as download_module
-	monkeypatch.setattr(download_module, "capital_market", DummyCapitalMarket)
+	# Monkeypatch capital_market via NSEClient accessor
+	import clients.nse_client as nse_client_module
+	monkeypatch.setattr(nse_client_module.NSEClient, "_get_capital_market", lambda self: DummyCapitalMarket)
 
 	with tempfile.TemporaryDirectory() as tmpdir:
 		outfile = os.path.join(tmpdir, "NIFTY_50.csv")

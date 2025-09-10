@@ -1,11 +1,8 @@
 import os
 from datetime import date, timedelta
 import pandas as pd
-from nselib import capital_market
 import duckdb
-from jugaad_data.nse import stock_df
 from typing import Callable
-import time
 import signal
 from contextlib import contextmanager
 
@@ -51,6 +48,15 @@ class NSEClient:
         finally:
             signal.alarm(0)
             signal.signal(signal.SIGALRM, old)
+
+    # Dependency accessors (allow override/shim to redirect or tests to patch via wrapper)
+    def _get_capital_market(self):
+        from nselib import capital_market as _capital_market
+        return _capital_market
+
+    def _get_stock_df(self):
+        from jugaad_data.nse import stock_df as _stock_df
+        return _stock_df
 
     def _fetch_equity_history_nselib(
         self,
@@ -98,7 +104,7 @@ class NSEClient:
             try:
                 self._log(f"nselib chunk {symbol}: {start_str} → {end_str}")
                 with self._timeout(self.timeout_seconds, f"nselib timeout for {symbol} {start_str}→{end_str}"):
-                    raw_df = capital_market.price_volume_data(symbol, start_str, end_str)
+                    raw_df = self._get_capital_market().price_volume_data(symbol, start_str, end_str)
                 if raw_df is not None and not raw_df.empty:
                     df = raw_df.copy()
 
@@ -281,7 +287,7 @@ class NSEClient:
             try:
                 self._log(f"jugaad_data stock_df {symbol}: {f} → {t}")
                 with self._timeout(self.timeout_seconds, f"jugaad_data timeout for {symbol} {f}→{t}"):
-                    jd = stock_df(symbol=symbol, from_date=f, to_date=t, series=self.default_series)
+                    jd = self._get_stock_df()(symbol=symbol, from_date=f, to_date=t, series=self.default_series)
                 return self._normalize_jugaad_stock_df(jd, symbol=symbol, series=self.default_series)
             except TimeoutError as te:
                 self._log(str(te))
@@ -411,7 +417,7 @@ class NSEClient:
         try:
             self._log(f"nselib index_data {symbol}: {from_date_str} → {to_date_str}")
             with self._timeout(self.timeout_seconds, f"nselib index timeout for {symbol} {from_date_str}→{to_date_str}"):
-                df = capital_market.index_data(symbol, from_date=from_date_str, to_date=to_date_str)
+                df = self._get_capital_market().index_data(symbol, from_date=from_date_str, to_date=to_date_str)
             if df.empty:
                 raise FileNotFoundError(f"No data available for {symbol} in the given date range.")
 
@@ -428,6 +434,4 @@ class NSEClient:
 
         except Exception as e:
             self._log(f"Error downloading data for {symbol}: {e}")
-            raise
-
-
+            raise 
