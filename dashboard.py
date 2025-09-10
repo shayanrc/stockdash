@@ -14,7 +14,7 @@ def get_db_connection():
     Establishes a connection to the DuckDB database.
     The connection is cached to avoid reconnecting on every interaction.
     """
-    return duckdb.connect('stock_data.db', read_only=True)
+    return duckdb.connect('data/db/stock.duckdb', read_only=True)
 
 con = get_db_connection()
 

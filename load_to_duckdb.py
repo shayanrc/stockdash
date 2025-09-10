@@ -26,7 +26,7 @@ def load_index_data(con):
     """
     Loads data from the index_history CSV files into the index_prices table.
     """
-    folder_path = 'data/index_history'
+    folder_path = 'data/cache/index_history'
     for filename in os.listdir(folder_path):
         if filename.endswith(".csv"):
             filepath = os.path.join(folder_path, filename)
@@ -36,7 +36,7 @@ def load_index_data(con):
             
             df = pd.read_csv(filepath)
             df.drop_duplicates(inplace=True)
-            df['Date'] = pd.to_datetime(df['Date'], format='%d-%m-%Y')
+            df['Date'] = pd.to_datetime(df['Date'])
 
             if latest_date:
                 df = df[df['Date'] > pd.to_datetime(latest_date)]
@@ -71,7 +71,7 @@ def load_stock_data(con):
     """
     Loads data from the price_history CSV files into the stock_prices table.
     """
-    folder_path = 'data/price_history'
+    folder_path = 'data/cache/price_history'
     for filename in os.listdir(folder_path):
         if filename.endswith(".csv"):
             filepath = os.path.join(folder_path, filename)
@@ -117,7 +117,7 @@ def load_stock_data(con):
             con.unregister('temp_stock_df')
             print(f"Loaded new data for stock: {stock_symbol}")
 
-def main(db_file='stock_data.db'):
+def main(db_file='data/db/stock.duckdb'):
     """
     Main function to connect to the database and load data.
     """
@@ -132,6 +132,6 @@ def main(db_file='stock_data.db'):
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description='Load CSV histories into DuckDB tables.')
-    parser.add_argument('--db-file', default='stock_data.db', help='Path to DuckDB database file')
+    parser.add_argument('--db-file', default='data/db/stock.duckdb', help='Path to DuckDB database file')
     args = parser.parse_args()
     main(db_file=args.db_file) 
